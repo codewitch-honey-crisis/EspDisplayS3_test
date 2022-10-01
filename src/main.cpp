@@ -1,5 +1,5 @@
 // define this for less flicker:
-#define DOUBLE_BUFFER
+//#define DOUBLE_BUFFER
 
 #include <Arduino.h>
 #include <lvgl.h>
@@ -19,6 +19,7 @@
 static lv_disp_draw_buf_t disp_buf;  // contains internal graphic buffer(s) called draw buffer(s)
 static lv_disp_drv_t disp_drv;       // contains callback functions
 static lv_color_t *lv_disp_buf;
+static lv_obj_t* label;
 #ifdef DOUBLE_BUFFER
 static lv_color_t *lv_disp_buf2;
 #endif
@@ -42,7 +43,7 @@ void touch_read( lv_indev_drv_t * indev_driver, lv_indev_data_t * data )
     }
 }
 static bool lvgl_flush_ready(esp_lcd_panel_io_handle_t panel_io, esp_lcd_panel_io_event_data_t *edata, void *user_ctx) {
-    lv_disp_flush_ready((lv_disp_drv_t *)user_ctx);
+    lv_disp_flush_ready(&disp_drv);
     return true;
 
 }
@@ -50,12 +51,12 @@ static void lvgl_flush(lv_disp_drv_t *drv, const lv_area_t *area, lv_color_t *co
     lcd_flush(area->x1,area->y1,area->x2,area->y2,color_map);
 }
 
+
 void setup() {
     Serial.begin(115200);
     Wire.begin(I2C_SDA, I2C_SCL);
-   lcd_color_trans_done_register_cb(lvgl_flush_ready,&disp_drv);
+   lcd_color_trans_done_register_cb(lvgl_flush_ready,NULL);
    lcd_init(LVGL_LCD_BUF_SIZE*sizeof(lv_color_t));
-   
     /* Lighten the screen with gradient */
     ledcSetup(0, 10000, 8);
     ledcAttachPin(LCD_BLK, 0);
@@ -86,13 +87,13 @@ void setup() {
 #endif
     /*Initialize the display*/
     lv_disp_drv_init(&disp_drv);
-    /*Change the following line to your display resolution*/
     disp_drv.hor_res = LCD_H_RES;
     disp_drv.ver_res = LCD_V_RES;
     disp_drv.flush_cb = lvgl_flush;
     disp_drv.draw_buf = &disp_buf;
     disp_drv.user_data = NULL;
     lv_disp_drv_register(&disp_drv);
+
     static lv_indev_drv_t indev_drv;
     lv_indev_drv_init( &indev_drv );
     indev_drv.type = LV_INDEV_TYPE_POINTER;
@@ -102,23 +103,51 @@ void setup() {
   
     ui_init();
     ui_patch();
+    //label = lv_label_create(lv_scr_act());
+    //lv_color16_t col;
+    //col.full = 0;
+    //lv_obj_set_style_text_color(label,col,0);
+    lv_style_selector_t selector=0;
+    //lv_label_set_text( label, "Hello");
+    //lv_obj_align( label, LV_ALIGN_CENTER, 0, 0 );
+    
 }
 void loop() {
-    lv_timer_handler();
-    delay(5);
     union {
         float f ;
         uint8_t b[4]; 
     } fbu;
-   
-    //while(!Serial.available());
+    if(Serial.available()) {
+        int i =Serial.readBytes(fbu.b,sizeof(fbu.b));
+        if(i==0) {
+            Serial.write('#');    
+        } else {
+            lv_bar_set_value(ui_CpuBar, (int)(fbu.f+.5), LV_ANIM_ON);
+            if(Serial.available()) {
+                i=Serial.readBytes(fbu.b,sizeof(fbu.b));
+                if(i!=0) {
+                    lv_bar_set_value(ui_GpuBar, (int)(fbu.f+.5), LV_ANIM_ON);
+                } else {
+                    Serial.write('#');    
+                }
+            }
+        }
+        
+        //char sz[64];
+        //itoa(i,sz,10);
+        //lv_label_set_text(label,sz);
     
-    //Serial.readBytes(fbu.b,sizeof(fbu.b));
-    lv_bar_set_value(ui_CpuBar, 25, LV_ANIM_OFF);
-    //while(!Serial.available());
-    //Serial.readBytes(fbu.b,sizeof(fbu.b));
-    lv_bar_set_value(ui_GpuBar, 50, LV_ANIM_OFF);
+    } else {
+        Serial.write('#');
+        //lv_label_set_text(label,"wrote");
+    }
     
-    lv_obj_invalidate(lv_scr_act());
+    
+    
+    lv_timer_handler();
+    delay(5);
+    
+    
+ 
 
 }
